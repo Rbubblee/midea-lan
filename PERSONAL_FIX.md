@@ -1,14 +1,19 @@
-# 个人修复分支：0xAC 备用查询族探测（issue #658）
+# 个人修复分支：针对星光PRO（223J6397）的 0xAC 备用查询族探测（issue #658）
 
-- 分支：`personal/ac-probe-fallback-fix`
+- 分支：`personal/ac-probe-fallback-fix（针对星光PRO修订）`
+  （旧名 `personal/ac-probe-fallback-fix` 保留为冻结备份，方便已经装过旧 pin 的实例继续可用）
 - 基于：`wuwentao/midea-lan` 的 `main`（`ae97f4f`），三个提交都可以单独 cherry-pick
 - 上游 PR：[wuwentao/midea-lan#113](https://github.com/wuwentao/midea-lan/pull/113)
   （同一套提交，分支 `fix/probe-fallback-family`；旧的 #85 已关闭，由 #113 取代）
 
-这个分支是我自用/待上游合并的版本，用来修
+这个分支是我自用/待上游合并的版本，针对**星光PRO**型号（`223J6397` / subtype 1，
+SN 210006734918980，就是 HA 里的"中央空调 min"）修订，用来修
 [wuwentao/midea_ac_lan#658](https://github.com/wuwentao/midea_ac_lan/issues/658)：
-中央空调 min（型号 223J6397 / subtype 1，SN 210006734918980）在 Home Assistant 里
-一直不可用，只能手动重载集成才能短暂恢复。
+这类机型在 Home Assistant 里一直不可用，只能手动重载集成才能短暂恢复。
+
+星光PRO 只讲 BB 子协议那一族查询，官方库按 B5/0x41 族探测就会把它整族拉黑，
+于是"能连云、局域网也通，但插件就是不认这个设备"。修复的做法是探测阶段再试一族，
+所以对其它机型没有副作用。
 
 ## 现象与实测根因
 
@@ -61,13 +66,13 @@ BB 回帧是用真机（223J6397）抓下来的三帧，解析结果 29.5 °C / 
 关闭 protection mode（要用 `docker` 命令）。
 
 ```bash
-# 1) 装 fork 版库（URL 里的 <sha> 用本分支最新提交，避免缓存）
+# 1) 装 fork 版库（分支名含中文，URL 需要用百分号编码的形式）
 docker exec homeassistant python3 -m uv pip install --system --reinstall --no-deps \
-  "midea-lan @ https://github.com/Rbubblee/midea-lan/archive/refs/heads/personal/ac-probe-fallback-fix.zip"
+  "midea-lan @ https://github.com/Rbubblee/midea-lan/archive/refs/heads/personal/ac-probe-fallback-fix%EF%BC%88%E9%92%88%E5%AF%B9%E6%98%9F%E5%85%89PRO%E4%BF%AE%E8%AE%A2%EF%BC%89.zip"
 
 # 如果容器里没有 uv 模块，就用 pip：
 # docker exec homeassistant python3 -m pip install --no-cache-dir --force-reinstall --no-deps \
-#   "midea-lan @ https://github.com/Rbubblee/midea-lan/archive/refs/heads/personal/ac-probe-fallback-fix.zip"
+#   "midea-lan @ https://github.com/Rbubblee/midea-lan/archive/refs/heads/personal/ac-probe-fallback-fix%EF%BC%88%E9%92%88%E5%AF%B9%E6%98%9F%E5%85%89PRO%E4%BF%AE%E8%AE%A2%EF%BC%89.zip"
 
 # 2) 确认装上了
 docker exec homeassistant python3 -c \
@@ -144,6 +149,9 @@ Installed 1 package in 4ms
 注意：
 
 - 更新流程是"HACS 里点 Update → 重启 HA"，不需要你改任何文件；
+- 换了分支名或想立刻重打 pin 时（例如现在这条针对星光PRO的改名）：Actions →
+  *Mirror upstream release* → *Run workflow*，勾上 `repin`，它只重写 manifest 里的 pin
+  并把 release tag 移到新提交，不用等上游发新版；
 - 想回滚：把 HACS 里的仓库换回 `wuwentao/midea_ac_lan`，重启即可（PyPI 版会自动装回）。
 
 ### 验证修复是否生效

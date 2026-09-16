@@ -1,0 +1,133 @@
+name: Keep the fix build current
+
+# The integration fork pins `midea-lan` to the branch rebased here: that pin is
+# what gives Home Assistant the #658 probe fixes while the change is under
+# review upstream (wuwentao/midea-lan#113). When upstream moves on, the fix has
+# to move with it, otherwise the pinned build is older than the version the
+# integration expects.
+#
+# The branch is only force-pushed when the library test suite passes on the
+# rebased tree, so a bad rebase cannot reach Home Assistant through the pin.
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: keep-fix-build-current
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: wuwentao/midea-lan
+  BRANCH: personal/ac-probe-fallback-fix
+
+jobs:
+  rebase:
+    name: Rebase the fix onto upstream main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the fix branch
+        uses: actions/checkout@v7
+        with:
+          ref: personal/ac-probe-fallback-fix
+          fetch-depth: 0
+
+      - name: Rebase onto upstream main
+        id: rebase
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --no-tags upstream main
+          before=$(git rev-parse HEAD)
+          if ! git rebase upstream/main; then
+            git rebase --abort
+            echo "::error::Rebasing the #658 fix onto upstream main conflicted; the branch is unchanged."
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" = "$before" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The fix branch is already based on upstream main."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git --no-pager log --oneline "upstream/main..HEAD"
+          fi
+
+      - name: Report a conflicting rebase
+        if: steps.rebase.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          title="Rebasing the #658 fix onto upstream main conflicts"
+          existing=$(gh issue list --state open --limit 100 \
+            --json title --jq "map(select(.title == \"$title\")) | length")
+          if [ "$existing" != "0" ]; then
+            echo "issue already open: $title"
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$(printf '%s\n' \
+            'Upstream `main` changed in a way that conflicts with the #658 probe fixes.' \
+            '' \
+            'The fix branch was left untouched, so Home Assistant keeps working, but the' \
+            'pinned build is now behind upstream. Rebase it by hand, then re-run this' \
+            'workflow: it pushes the rebased branch again once the tests pass.')"
+
+      - name: Fail the run when the rebase conflicted
+        if: steps.rebase.outcome == 'failure'
+        run: exit 1
+
+      - name: Install uv
+        if: steps.rebase.outputs.changed == 'true'
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Test the rebased build
+        if: steps.rebase.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12
+          # shellcheck disable=SC1091
+          source .venv/bin/activate
+          uv pip install -r requirements-all.txt
+          python -m pytest ./tests/ -q
+          ruff check .
+          mypy midealan
+
+      - name: Push the rebased branch
+        if: steps.rebase.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git push --force-with-lease origin "HEAD:refs/heads/${BRANCH}"
+
+      - name: Flag when upstream carries the fix itself
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! git show upstream/main:midealan/device.py | grep -q "def build_query_fallback"; then
+            echo "upstream main does not have the fix yet; nothing to flag"
+            exit 0
+          fi
+          title="Upstream carries the #658 fixes; the fork pin can go away"
+          existing=$(gh issue list --state open --limit 100 \
+            --json title --jq "map(select(.title == \"$title\")) | length")
+          if [ "$existing" != "0" ]; then
+            echo "issue already open: $title"
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$(printf '%s\n' \
+            'Upstream `main` now ships the #658 probe fixes, so nothing has to be pinned any more.' \
+            '' \
+            'Switch the Home Assistant integration back to the official repository' \
+            '(`wuwentao/midea_ac_lan`) and let HACS install the released `midea-lan`' \
+            'instead of the fork build: the pin in this fork only exists while the fix' \
+            'is missing upstream.')"

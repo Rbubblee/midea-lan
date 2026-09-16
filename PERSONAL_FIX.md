@@ -138,6 +138,8 @@ Installed 1 package in 4ms
 - `Rbubblee/midea_ac_lan` 的 **Mirror upstream release**：每 6 小时检查上游集成的新 release，
   有新版就合并上游、重打 pin、把 tag 移到镜像提交并发布 release。
   HACS 于是照常显示 **Update**，你点一下即可。
+  release 里会附上 `hacs.json` 要求的 `midea_ac_lan.zip` 附件——因为 `hacs.json` 声明了
+  `zip_release: true`，HACS 下载的是这个附件而不是源码包，缺了它会报 "Could not download"。
 
 它会自己判断三种情况：
 

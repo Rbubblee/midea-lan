@@ -24,7 +24,7 @@ concurrency:
 
 env:
   UPSTREAM_REPO: wuwentao/midea-lan
-  BRANCH: personal/ac-probe-fallback-fix
+  BRANCH: personal/ac-probe-fallback-fix（针对星光PRO修订）
 
 jobs:
   rebase:
@@ -34,7 +34,7 @@ jobs:
       - name: Check out the fix branch
         uses: actions/checkout@v7
         with:
-          ref: personal/ac-probe-fallback-fix
+          ref: personal/ac-probe-fallback-fix（针对星光PRO修订）
           fetch-depth: 0
 
       - name: Rebase onto upstream main

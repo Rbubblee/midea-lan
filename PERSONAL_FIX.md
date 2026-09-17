@@ -32,11 +32,11 @@ SN 210006734918980，就是 HA 里的"中央空调 min"）修订，用来修
 
 ## 改动点（3 个提交）
 
-| 提交 | 文件 | 说明 |
-| --- | --- | --- |
-| `fix: retry a timed-out protocol probe once before blacklisting` | `midealan/device.py` | 协议探测时，单次超时不再直接把命令拉黑：`QUERY_PROBE_RETRIES = 2`，重发前清空 `_buffer`（避免半帧粘到重试回包导致解帧失败）；重发的 **写** 超时属于链路故障，向上抛给连接恢复而不是拉黑。 |
-| `fix: cap the reconnect backoff at one minute` | `midealan/device.py` | 重连退避上限从 600 秒降到 `MAX_RECONNECT_SLEEP = 60`：设备恢复后最多 1 分钟自动接回，不用手动重载。 |
-| `fix(ac): probe an alternative query family before giving up` | `midealan/device.py`、`midealan/devices/ac/__init__.py` | 新增 `build_query_fallback()` 钩子（基类默认返回空）＋ `_probe_query_reply()`；主查询族全部静默时，在同一次 checked probe 里再探一次备用族。AC 用 BB 子协议查询实现它；一旦 `_used_subprotocol` 置位就返回空，所以每连接最多多探一次。 |
+| 提交                                                             | 文件                                                    | 说明                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fix: retry a timed-out protocol probe once before blacklisting` | `midealan/device.py`                                    | 协议探测时，单次超时不再直接把命令拉黑：`QUERY_PROBE_RETRIES = 2`，重发前清空 `_buffer`（避免半帧粘到重试回包导致解帧失败）；重发的 **写** 超时属于链路故障，向上抛给连接恢复而不是拉黑。                                              |
+| `fix: cap the reconnect backoff at one minute`                   | `midealan/device.py`                                    | 重连退避上限从 600 秒降到 `MAX_RECONNECT_SLEEP = 60`：设备恢复后最多 1 分钟自动接回，不用手动重载。                                                                                                                                    |
+| `fix(ac): probe an alternative query family before giving up`    | `midealan/device.py`、`midealan/devices/ac/__init__.py` | 新增 `build_query_fallback()` 钩子（基类默认返回空）＋ `_probe_query_reply()`；主查询族全部静默时，在同一次 checked probe 里再探一次备用族。AC 用 BB 子协议查询实现它；一旦 `_used_subprotocol` 置位就返回空，所以每连接最多多探一次。 |
 
 ### 为什么算"通用"而不是打补丁
 
@@ -107,10 +107,10 @@ ha core restart
 
 HA 里要做的（只有你能点，我没有管理员/终端权限）：
 
-1. HACS → 右上角三个点 → *Custom repositories* → 填 `https://github.com/Rbubblee/midea_ac_lan`，
-   类型选 *Integration* → Add；
+1. HACS → 右上角三个点 → _Custom repositories_ → 填 `https://github.com/Rbubblee/midea_ac_lan`，
+   类型选 _Integration_ → Add；
 2. HACS 里会出现两个同名的 `Midea AC LAN`（域名都是 `midea_ac_lan`）。先对原来那个
-   （`wuwentao/midea_ac_lan`）选 *Remove* —— HACS 只删 `custom_components/midea_ac_lan/`
+   （`wuwentao/midea_ac_lan`）选 _Remove_ —— HACS 只删 `custom_components/midea_ac_lan/`
    目录和 HACS 自己的记录，HA 的 config entry 与实体注册表都会保留；
 3. 立刻安装刚添加的 `Rbubblee/midea_ac_lan`（HACS 会装它最新的 release，例如 `v2026.9.1`）；
 4. 重启 HA core。
@@ -152,7 +152,7 @@ Installed 1 package in 4ms
 
 - 更新流程是"HACS 里点 Update → 重启 HA"，不需要你改任何文件；
 - 换了分支名或想立刻重打 pin 时（例如现在这条针对星光PRO的改名）：Actions →
-  *Mirror upstream release* → *Run workflow*，勾上 `repin`，它只重写 manifest 里的 pin
+  _Mirror upstream release_ → _Run workflow_，勾上 `repin`，它只重写 manifest 里的 pin
   并把 release tag 移到新提交，不用等上游发新版；
 - 想回滚：把 HACS 里的仓库换回 `wuwentao/midea_ac_lan`，重启即可（PyPI 版会自动装回）。
 

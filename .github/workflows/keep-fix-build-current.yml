@@ -16,7 +16,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 concurrency:
   group: keep-fix-build-current
@@ -62,23 +61,18 @@ jobs:
 
       - name: Report a conflicting rebase
         if: steps.rebase.outcome == 'failure'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          title="Rebasing the #658 fix onto upstream main conflicts"
-          existing=$(gh issue list --state open --limit 100 \
-            --json title --jq "map(select(.title == \"$title\")) | length")
-          if [ "$existing" != "0" ]; then
-            echo "issue already open: $title"
-            exit 0
-          fi
-          gh issue create --title "$title" --body "$(printf '%s\n' \
+          echo "::error title=Rebase conflict::rebasing the #658 fix onto upstream main conflicted; the fix branch was left untouched, so Home Assistant keeps running the older pinned build."
+          printf '%s\n' \
+            '## Rebase conflict' \
+            '' \
             'Upstream `main` changed in a way that conflicts with the #658 probe fixes.' \
             '' \
             'The fix branch was left untouched, so Home Assistant keeps working, but the' \
             'pinned build is now behind upstream. Rebase it by hand, then re-run this' \
-            'workflow: it pushes the rebased branch again once the tests pass.')"
+            'workflow: it pushes the rebased branch again once the tests pass.' \
+            >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail the run when the rebase conflicted
         if: steps.rebase.outcome == 'failure'
@@ -109,25 +103,20 @@ jobs:
           git push --force-with-lease origin "HEAD:refs/heads/${BRANCH}"
 
       - name: Flag when upstream carries the fix itself
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if ! git show upstream/main:midealan/device.py | grep -q "def build_query_fallback"; then
             echo "upstream main does not have the fix yet; nothing to flag"
             exit 0
           fi
-          title="Upstream carries the #658 fixes; the fork pin can go away"
-          existing=$(gh issue list --state open --limit 100 \
-            --json title --jq "map(select(.title == \"$title\")) | length")
-          if [ "$existing" != "0" ]; then
-            echo "issue already open: $title"
-            exit 0
-          fi
-          gh issue create --title "$title" --body "$(printf '%s\n' \
+          echo "::notice title=The pin can go away::upstream main now ships the #658 probe fixes; the Home Assistant integration can go back to wuwentao/midea_ac_lan and drop the fork pin."
+          printf '%s\n' \
+            '## Upstream carries the fix' \
+            '' \
             'Upstream `main` now ships the #658 probe fixes, so nothing has to be pinned any more.' \
             '' \
             'Switch the Home Assistant integration back to the official repository' \
             '(`wuwentao/midea_ac_lan`) and let HACS install the released `midea-lan`' \
             'instead of the fork build: the pin in this fork only exists while the fix' \
-            'is missing upstream.')"
+            'is missing upstream.' \
+            >> "$GITHUB_STEP_SUMMARY"

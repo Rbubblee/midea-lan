@@ -1,10 +1,12 @@
 # 个人修复分支：针对星光PRO（223J6397）的 0xAC 备用查询族探测（issue #658）
 
 - 分支：`personal/ac-probe-fallback-fix（针对星光PRO修订）`
-  （旧名 `personal/ac-probe-fallback-fix` 保留为冻结备份，方便已经装过旧 pin 的实例继续可用）
-- 基于：`wuwentao/midea-lan` 的 `main`（`ae97f4f`），三个提交都可以单独 cherry-pick
+  ← HA 的依赖 pin 就是这条分支
+- **当前内容（2026-09-23 起）**：上游 PR #113 的 head `89ee549`，加上本文档所在的历史提交。
+  代码部分与上游分支逐字一致（`git diff 89ee549 HEAD -- midealan tests` 为空），只多带了这些说明文档。
 - 上游 PR：[wuwentao/midea-lan#113](https://github.com/wuwentao/midea-lan/pull/113)
-  （同一套提交，分支 `fix/probe-fallback-family`；旧的 #85 已关闭，由 #113 取代）
+  分支 `fix/probe-fallback-family`（旧的 #85 已关闭，由 #113 取代）
+- 回滚点：切换前的旧构建是 `c8d64a6`（基于旧 main，只含我最初的三个提交）
 
 这个分支是我自用/待上游合并的版本，针对**星光PRO**型号（`223J6397` / subtype 1，
 SN 210006734918980，就是 HA 里的"中央空调 min"）修订，用来修
@@ -14,6 +16,28 @@ SN 210006734918980，就是 HA 里的"中央空调 min"）修订，用来修
 星光PRO 只讲 BB 子协议那一族查询，官方库按 B5/0x41 族探测就会把它整族拉黑，
 于是"能连云、局域网也通，但插件就是不认这个设备"。修复的做法是探测阶段再试一族，
 所以对其它机型没有副作用。
+
+## 2026-09-23：切到上游版本，准备真机验证
+
+维护者 `wuwentao` 在 #113 里主动 rebase 了这套提交并加了后续修复（`4aa1571`，
+署名 "Review/update by Codex, GPT-5"），点名请我用真机确认；随后又推 `89ee549`
+修 CI 的 mypy 报错。为了让"验证的就是他准备合的那份代码"，这条被 pin 的分支从
+"我自己的三个提交"换成了他的 head。
+
+他的实现相对我原来的版本：
+
+| 变更点                       | 说明                                                                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `refresh_status()` 回退选择  | 只有**当前状态族反复超时**才试备用族；解析错误、响应家族不匹配一律不回退（我原来的版本只看 `error_count`）                                  |
+| `_is_query_response_valid()` | AC 收到 BB 响应后必须确认 `_used_subprotocol` 真的置位才接受，避免误判切换家族                                                              |
+| B5 能力探测超时处理          | 不再永久拉黑，改为 **60 秒冷却后重试**（`CAPABILITY_QUERY_RETRY_INTERVAL`，来自上游另一台机型 `22019053` 的反馈）                           |
+| 基类新钩子                   | `build_query_fallback()` / `_is_query_response_valid()` / `_should_defer_query()` / `_defer_query()` 默认都是空实现，非 AC 设备行为完全不变 |
+| 解码缓冲                     | 最后一次探测超时后也清空 `_buffer`，防止半帧污染下一次查询                                                                                  |
+| 重连退避                     | 我原来的 `MAX_RECONNECT_SLEEP = 60` 被保留                                                                                                  |
+
+已知取舍：CodeRabbit 指出每个未应答的查询都会多等一次重试，所以"连不上/不该答"的设备
+连接阶段会比以前慢一点。它还建议"重试只持续到本轮收到第一个成功回复为止"，目前代码是
+"每条查询各重试一次"——真机验证时留意连接耗时，必要时再采纳。
 
 ## 现象与实测根因
 
@@ -57,6 +81,10 @@ mypy midealan
 三处修复都做了"回退源码即失败"的验证：去掉重试 → 8 个测试失败；
 上限改回 600 秒 → 退避测试失败；回退备用族改动 → 4 个测试失败。
 BB 回帧是用真机（223J6397）抓下来的三帧，解析结果 29.5 °C / 53 % / 25.5 °C 写进了测试。
+
+换成上游 `89ee549` 后，这份代码由上游 CI 验证过（run 35820224076，Python 3.12–3.14 ×
+Ubuntu/macOS/Windows 全绿 + Codecov），上游记录是 `2206 passed`；本地机器只有
+Python 3.9、跑不了这套测试，所以本分支直接用上游跑过的提交，文档提交不碰代码。
 
 ## 怎么装到自己的 HA
 
@@ -158,11 +186,31 @@ Installed 1 package in 4ms
 
 ### 验证修复是否生效
 
+- 先确认装的是新构建（只有上游那版才有 `_should_defer_query`）：
+
+  ```bash
+  docker exec homeassistant python3 -c \
+    "from midealan.device import MideaDevice as D; import midealan.devices.ac as ac; \
+     print(hasattr(D, '_should_defer_query'), ac.CAPABILITY_QUERY_RETRY_INTERVAL)"
+  # 期望：True 60.0
+  ```
+
+  如果仍是 `False`，是 pip/uv 缓存了旧的 zip，用 `--no-cache` 重装再 `ha core restart`：
+
+  ```bash
+  docker exec homeassistant python3 -m uv pip install --system --reinstall --no-cache --no-deps \
+    "midea-lan @ https://github.com/Rbubblee/midea-lan/archive/refs/heads/personal/ac-probe-fallback-fix%EF%BC%88%E9%92%88%E5%AF%B9%E6%98%9F%E5%85%89PRO%E4%BF%AE%E8%AE%A2%EF%BC%89.zip"
+  ```
+
 - 日志（`midealan` logger 调到 `debug`）应出现
   `no reply to [...], probing the alternative query family [...]`，随后设备 `available: True`；
+  新版本还会先在主族上重试，日志形如 `Probe for X timed out (1/2), retrying`；
+- B5 能力探测如果这次仍然静默，日志不会再报"不支持"，而是 60 秒后自动重试；
 - 实体 `climate.210006734918980_climate`、`sensor.210006734918980_indoor_temperature`、
   `sensor.210006734918980_indoor_humidity` 有值；
 - 关机状态下 `current_energy_consumption` 为 `unknown` 属正常（其他 4 台同样如此）。
+- 回滚到切换前的旧构建：把这条分支 force-push 回 `c8d64a6`，或
+  `docker exec homeassistant python3 -m uv pip install --system --reinstall "midea-lan==2026.9.1"` 后重启。
 
 ## 上游合并后怎么切回
 

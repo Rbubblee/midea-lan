@@ -1,3 +1,12 @@
+> [!IMPORTANT]
+> **已归档（2026-10-31）**：针对星光PRO（`223J6397`）的修复已并入官方
+> [wuwentao/midea-lan](https://github.com/wuwentao/midea-lan) **v2026.10.0**，
+> 集成侧对应 [wuwentao/midea_ac_lan v2026.10.0](https://github.com/wuwentao/midea_ac_lan/releases/tag/v2026.10.0)。
+> 请直接使用官方版本；本仓库只作历史留存，不再维护。
+>
+> **Archived (2026-10-31):** the fix shipped upstream in midea-lan **v2026.10.0**.
+> Use the official repositories; this fork is kept for history only.
+
 # midea-lan（个人 fork）
 
 上游原仓库：https://github.com/wuwentao/midea-lan
